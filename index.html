@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Us - Private Chat</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#128C7E">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3616/3616215.png">
+    
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        waGreen: '#128C7E',
+                        waLightGreen: '#25D366',
+                        waDarkBg: '#111b21',
+                        waDarkChat: '#0b141a'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-900 transition-colors duration-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function PrivateApp() {
+            // --- STATE MANAGEMENT ---
+            const [user, setUser] = React.useState(localStorage.getItem('currentUser') || null);
+            const [usernameInput, setUsernameInput] = React.useState('');
+            const [passwordInput, setPasswordInput] = React.useState('');
+            const [loginError, setLoginError] = React.useState('');
+            
+            const [view, setView] = React.useState('chats'); // chats, status, settings
+            const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
+            
+            // Simulating database storage locally
+            const [messages, setMessages] = React.useState(JSON.parse(localStorage.getItem('chat_messages')) || []);
+            const [rayProfile, setRayProfile] = React.useState(localStorage.getItem('ray_pic') || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150');
+            const [cherryProfile, setCherryProfile] = React.useState(localStorage.getItem('cherry_pic') || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150');
+            
+            const [textInput, setTextInput] = React.useState('');
+            const [isTyping, setIsTyping] = React.useState(false);
+            const [otherUserTyping, setOtherUserTyping] = React.useState(false);
+            const [viewOnceActive, setViewOnceActive] = React.useState(false);
+            
+            // PWA Installation state
+            const [deferredPrompt, setDeferredPrompt] = React.useState(null);
+            const [showInstallBtn, setShowInstallBtn] = React.useState(false);
+
+            const otherUser = user === 'Ray' ? 'Cherry' : 'Ray';
+            const userAvatar = user === 'Ray' ? rayProfile : cherryProfile;
+            const otherAvatar = user === 'Ray' ? cherryProfile : rayProfile;
+
+            // --- INITIALIZATION EFFECTS ---
+            React.useEffect(() => {
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+                localStorage.setItem('theme', theme);
+            }, [theme]);
+
+            React.useEffect(() => {
+                localStorage.setItem('chat_messages', JSON.stringify(messages));
+            }, [messages]);
+
+            React.useEffect(() => {
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                    setShowInstallBtn(true);
+                });
+            }, []);
+
+            React.useEffect(() => {
+                if (textInput.length > 0 && !isTyping) {
+                    setIsTyping(true);
+                    setTimeout(() => setOtherUserTyping(true), 600);
+                } else if (textInput.length === 0 && isTyping) {
+                    setIsTyping(false);
+                    setTimeout(() => setOtherUserTyping(false), 1500);
+                }
+            }, [textInput]);
+
+            // --- HANDLERS ---
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const cleanUser = usernameInput.trim().toLowerCase();
+                
+                if (passwordInput !== '15.01.2026') {
+                    setLoginError('Incorrect custom password.');
+                    return;
+                }
+
+                if (cleanUser === 'ray' || cleanUser === 'cherry') {
+                    const formattedName = cleanUser === 'ray' ? 'Ray' : 'Cherry';
+                    
+                    let registeredUsers = JSON.parse(localStorage.getItem('registered_users')) || [];
+                    if (registeredUsers.length >= 2 && !registeredUsers.includes(formattedName)) {
+                        setLoginError('Access denied: Max profile cap reached for this build.');
+                        return;
+                    }
+                    if (!registeredUsers.includes(formattedName)) {
+                        registeredUsers.push(formattedName);
+                        localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+                    }
+
+                    localStorage.setItem('currentUser', formattedName);
+                    setUser(formattedName);
+                } else {
+                    setLoginError('Only Ray or Cherry can access this application.');
+                }
+            };
+
+            const triggerPwaInstall = async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    setShowInstallBtn(false);
+                }
+                setDeferredPrompt(null);
+            };
+
+            const handleSendMessage = (e, mediaType = null, mediaUrl = null) => {
+                if (e) e.preventDefault();
+                if (!textInput.trim() && !mediaUrl) return;
+
+                const newMsg = {
+                    id: Date.now(),
+                    sender: user,
+                    text: mediaUrl ? '' : textInput,
+                    timestamp: new Date().toISOString(),
+                    status: 'sent',
+                    mediaType: mediaType,
+                    mediaUrl: mediaUrl,
+                    viewOnce: viewOnceActive,
+                    opened: false
+                };
+
+                setMessages([...messages, newMsg]);
+                setTextInput('');
+                setViewOnceActive(false);
+
+                setTimeout(() => {
+                    setMessages(prev => prev.map(m => m.id === newMsg.id ? {...m, status: 'delivered'} : m));
+                }, 1000);
+
+                setTimeout(() => {
+                    setMessages(prev => prev.map(m => m.id === newMsg.id ? {...m, status: 'read'} : m));
+                }, 2500);
+            };
+
+            const handleDeleteMessage = (msgId) => {
+                const targetMsg = messages.find(m => m.id === msgId);
+                if (!targetMsg) return;
+
+                const minutesPassed = (Date.now() - new Date(targetMsg.timestamp).getTime()) / 1000 / 60;
+                
+                if (targetMsg.status === 'read') {
+                    alert("Cannot delete: The recipient has already viewed this message.");
+                    return;
+                }
+                if (minutesPassed > 30) {
+                    alert("Cannot delete: Message has exceeded the 30-minute deletion window.");
+                    return;
+                }
+
+                setMessages(messages.map(m => m.id === msgId ? { ...m, text: "🚫 You deleted this message", mediaUrl: null, mediaType: null } : m));
+            };
+
+            const triggerViewOnce = (msgId) => {
+                setMessages(messages.map(m => m.id === msgId ? { ...m, opened: true, text: "👀 View Once Media Opened" } : m));
+            };
+
+            const handleProfileUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        if (user === 'Ray') {
+                            setRayProfile(reader.result);
+                            localStorage.setItem('ray_pic', reader.result);
+                        } else {
+                            setCherryProfile(reader.result);
+                            localStorage.setItem('cherry_pic', reader.result);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('currentUser');
+                setUser(null);
+            };
+
+            return (
+                <div className="max-w-md mx-auto h-screen flex flex-col bg-white dark:bg-waDarkChat text-gray-800 dark:text-gray-100 shadow-2xl relative overflow-hidden">
+                    {/* HEADER */}
+                    <header className="bg-waGreen dark:bg-waDarkBg text-white px-4 py-3 flex items-center justify-between shadow-md z-10">
+                        <div className="flex items-center gap-3">
+                            <img src={otherAvatar} alt="Partner" className="w-10 h-10 rounded-full object-cover border border-white/20" />
+                            <div>
+                                <h1 className="font-bold text-base tracking-wide">{view === 'chats' ? otherUser : view.toUpperCase()}</h1>
+                                {view === 'chats' && (
+                                    <span className="text-xs text-emerald-200 block font-light">
+                                        {otherUserTyping ? 'typing...' : 'online'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setView('chats')} className={`p-1 ${view === 'chats' ? 'text-emerald-300' : ''}`}><i data-lucide="message-square"></i></button>
+                            <button onClick={() => setView('status')} className={`p-1 ${view === 'status' ? 'text-emerald-300' : ''}`}><i data-lucide="aperture"></i></button>
+                            <button onClick={() => setView('settings')} className={`p-1 ${view === 'settings' ? 'text-emerald-300' : ''}`}><i data-lucide="settings"></i></button>
+                        </div>
+                    </header>
+
+                    {/* MAIN CONTENT AREA */}
+                    <main className="flex-1 overflow-y-auto bg-orange-50/40 dark:bg-waDarkChat relative">
+                        {view === 'chats' && (
+                            <div className="flex flex-col h-full justify-between">
+                                <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+                                    {messages.length === 0 ? (
+                                        <div className="text-center text-gray-400 dark:text-gray-500 mt-20 text-sm italic">No entries yet. Send your first communication drop below.</div>
+                                    ) : (
+                                        messages.map((msg) => {
+                                            const isMe = msg.sender === user;
+                                            return (
+                                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                    <div className={`max-w-[75%] rounded-xl px-3 py-2 shadow-sm text-sm relative group ${
+                                                        isMe ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-gray-900 dark:text-white rounded-tr-none' : 'bg-white dark:bg-[#202c33] text-gray-900 dark:text-white rounded-tl-none'
+                                                    }`}>
+                                                        {isMe && msg.text !== "🚫 You deleted this message" && (
+                                                            <button onClick={() => handleDeleteMessage(msg.id)} className="absolute -top-2 -left-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-md">
+                                                                <i data-lucide="trash-2" className="w-3 h-3"></i>
+                                                            </button>
+                                                        )}
+
+                                                        {msg.mediaType && (
+                                                            <div className="mb-2 rounded-lg overflow-hidden">
+                                                                {msg.viewOnce && !msg.opened ? (
+                                                                    <button onClick={() => triggerViewOnce(msg.id)} className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded text-xs font-semibold tracking-wide border border-dashed border-gray-400">
+                                                                        <i data-lucide="eye-off" className="text-emerald-500"></i> View Once Media (Tap to open)
+                                                                    </button>
+                                                                ) : msg.mediaType === 'image' ? (
+                                                                    <img src={msg.mediaUrl} className="max-h-48 w-full object-cover" />
+                                                                ) : msg.mediaType === 'video' ? (
+                                                                    <video src={msg.mediaUrl} controls className="max-h-48 w-full object-cover" />
+                                                                ) : (
+                                                                    <audio src={msg.mediaUrl} controls className="w-full mt-1" />
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {msg.text && <p className="leading-relaxed break-words pr-8">{msg.text}</p>}
+                                                        
+                                                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-gray-400 dark:text-gray-300">
+                                                            <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            {isMe && (
+                                                                <span>
+                                                                    {msg.status === 'sent' && <i data-lucide="check" className="w-3 h-3 text-gray-400"></i>}
+                                                                    {msg.status === 'delivered' && <div className="flex"><i data-lucide="check" className="w-3 h-3 text-gray-400"></i><i data-lucide="check" className="w-3 h-3 text-gray-400 -ml-1.5"></i></div>}
+                                                                    {msg.status === 'read' && <div className="flex"><i data-lucide="check" className="w-3 h-3 text-waLightGreen"></i><i data-lucide="check" className="w-3 h-3 text-waLightGreen -ml-1.5"></i></div>}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+
+                                <form onSubmit={handleSendMessage} className="bg-gray-100 dark:bg-[#202c33] p-3 flex items-center gap-2 border-t border-gray-200 dark:border-gray-800">
+                                    <button type="button" onClick={() => setViewOnceActive(!viewOnceActive)} className={`p-2 rounded-full transition ${viewOnceActive ? 'bg-amber-500 text-white animate-pulse' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                                        <i data-lucide="eye"></i>
+                                    </button>
+                                    
+                                    <button type="button" onClick={() => handleSendMessage(null, 'image', 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400')} className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
+                                        <i data-lucide="image"></i>
+                                    </button>
+                                    <button type="button" onClick={() => handleSendMessage(null, 'voice', 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3')} className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
+                                        <i data-lucide="mic"></i>
+                                    </button>
+
+                                    <input type="text" placeholder="Type a message..." value={textInput} onChange={e => setTextInput(e.target.value)} className="flex-1 bg-white dark:bg-[#2a3942] p-2 px-4 rounded-full text-sm focus:outline-none focus:ring-1 focus:ring-waGreen text-black dark:text-white" />
+                                    <button type="submit" className="bg-waGreen hover:bg-emerald-600 text-white p-2.5 rounded-full shadow-md"><i data-lucide="send" className="w-4 h-4"></i></button>
+                                </form>
+                            </div>
+                        )}
+
+                        {view === 'status' && (
+                            <div className="p-6 space-y-6">
+                                <div className="bg-white dark:bg-[#202c33] p-4 rounded-xl shadow-sm text-center flex flex-col items-center">
+                                    <div className="relative group w-24 h-24 mb-3">
+                                        <img src={userAvatar} className="w-24 h-24 rounded-full object-cover border-4 border-waGreen" />
+                                        <label className="absolute bottom-0 right-0 bg-waLightGreen text-white p-1.5 rounded-full shadow-md cursor-pointer hover:scale-105 transition">
+                                            <i data-lucide="camera" className="w-4 h-4"></i>
+                                            <input type="file" accept="image/*" onChange={handleProfileUpload} className="hidden" />
+                                        </label>
+                                    </div>
+                                    <h3 className="font-bold text-lg">{user} (You)</h3>
+                                    <p className="text-xs text-gray-400 mt-1">Tap camera icon to change photo</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'settings' && (
+                            <div className="p-4 space-y-4">
+                                <div className="bg-white dark:bg-[#202c33] rounded-xl p-4 shadow-sm space-y-4">
+                                    <h3 className="font-bold border-b border-gray-100 dark:border-gray-700 pb-2 text-waGreen">Preferences</h3>
+                                    
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium">Dark Mode Theme</span>
+                                        <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-amber-500 dark:text-amber-300 font-bold transition">
+                                            {theme === 'dark' ? <i data-lucide="sun"></i> : <i data-lucide="moon"></i>}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button onClick={handleLogout} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 p-3 rounded-xl font-bold tracking-wide transition text-sm flex items-center justify-center gap-2">
+                                    <i data-lucide="log-out" className="w-4 h-4"></i> Clear Device Session
+                                </button>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PrivateApp />);
+
+        setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 200);
+        document.addEventListener('click', () => { setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50); });
+    </script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW Registered'))
+                    .catch(err => console.log('SW Failed', err));
+            });
+        }
+    </script>
+</body>
+</html>

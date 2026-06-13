@@ -1,0 +1,17 @@
+{
+  "name": "Us Private Channel",
+  "short_name": "Us",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#111b21",
+  "theme_color": "#128C7E",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
